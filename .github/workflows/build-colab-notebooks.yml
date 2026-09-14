@@ -1,0 +1,53 @@
+name: Build Colab notebooks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/build_colab_notebooks.py
+      - .github/workflows/build-colab-notebooks.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate notebooks
+        run: python tools/build_colab_notebooks.py
+
+      - name: Verify generated notebooks
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files = sorted(Path('notebooks').glob('ch0[1-7]_*.ipynb'))
+          assert len(files) == 7, files
+          for path in files:
+              nb = json.loads(path.read_text(encoding='utf-8'))
+              assert nb['nbformat'] == 4
+              assert nb['cells']
+              print(path, len(nb['cells']))
+          PY
+
+      - name: Commit generated notebooks
+        run: |
+          if git diff --quiet -- notebooks README.md; then
+            echo 'No generated changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add notebooks README.md
+          git commit -m 'Rebuild complete Colab notebooks'
+          git push
